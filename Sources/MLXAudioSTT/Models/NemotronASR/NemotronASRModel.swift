@@ -390,12 +390,7 @@ public extension NemotronASRModel {
         let sanitized = sanitize(weights: weights)
 
         if let perLayerQuant = quantConfig.perLayerQuantization {
-            quantize(model: model) { path, _ in
-                if sanitized["\(path).scales"] != nil {
-                    return perLayerQuant.quantization(layer: path)?.asTuple
-                }
-                return nil
-            }
+            try applyQuantization(to: model, sanitized: sanitized, perLayerQuantization: perLayerQuant)
         }
 
         try model.update(parameters: ModuleParameters.unflattened(sanitized), verify: .all)
@@ -443,6 +438,36 @@ public extension NemotronASRModel {
 }
 
 private extension NemotronASRModel {
+    static func applyQuantization(
+        to model: Module,
+        sanitized: [String: MLXArray],
+        perLayerQuantization: BaseConfiguration.PerLayerQuantization
+    ) throws {
+        let updates = model.leafModules().flattened().compactMap { path, module -> (String, Module)? in
+            guard sanitized["\(path).scales"] != nil,
+                  let (groupSize, bits, mode) = perLayerQuantization.quantization(layer: path)?.asTuple,
+                  let quantized = quantizeSingle(layer: module, groupSize: groupSize, bits: bits, mode: mode)
+            else {
+                return nil
+            }
+
+            return (path, quantized)
+        }
+
+        do {
+            try model.update(modules: ModuleChildren.unflattened(updates), verify: .none)
+        } catch {
+            throw NSError(
+                domain: "NemotronASRModel",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Unable to apply Nemotron quantization to \(updates.count) layers: \(error.localizedDescription)"
+                ]
+            )
+        }
+    }
+
     static func sanitize(weights: [String: MLXArray]) -> [String: MLXArray] {
         var sanitized: [String: MLXArray] = [:]
         sanitized.reserveCapacity(weights.count)
