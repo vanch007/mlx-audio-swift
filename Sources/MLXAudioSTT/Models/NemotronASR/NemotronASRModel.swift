@@ -343,8 +343,8 @@ public final class NemotronASRModel: Module, STTGenerationModel {
 }
 
 final class NemotronASRPromptKernel: Module {
-    @ModuleInfo(key: "0") var linear0: Linear
-    @ModuleInfo(key: "2") var linear2: Linear
+    @ModuleInfo(key: "linear0") var linear0: Linear
+    @ModuleInfo(key: "linear2") var linear2: Linear
 
     init(dModel: Int, numPrompts: Int, promptHidden: Int) {
         self._linear0.wrappedValue = Linear(dModel + numPrompts, promptHidden)
@@ -482,6 +482,8 @@ private extension NemotronASRModel {
 
     static func remapKey(_ key: String) -> String? {
         var newKey = key
+        newKey = newKey.replacingOccurrences(of: "prompt_kernel.0.", with: "prompt_kernel.linear0.")
+        newKey = newKey.replacingOccurrences(of: "prompt_kernel.2.", with: "prompt_kernel.linear2.")
         newKey = newKey.replacingOccurrences(of: "joint.joint_net.2.", with: "joint.joint_net.")
         newKey = newKey.replacingOccurrences(of: ".pos_bias_u", with: ".posBiasU")
         newKey = newKey.replacingOccurrences(of: ".pos_bias_v", with: ".posBiasV")
